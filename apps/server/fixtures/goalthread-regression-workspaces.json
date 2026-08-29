@@ -1,0 +1,83 @@
+{
+  "description": "Fabricated saved-video metadata to seed Agent workspaces for a richer live demo. Not a real TikTok API integration — these are static files meant to be dropped into an Agent's workspace for the Agent to read.",
+  "workspaces": {
+    "ws-tokyo-01": [
+      {
+        "videoId": "tk-tokyo-001",
+        "title": "Best ramen spots in Shibuya",
+        "creator": "TokyoFoodGuide",
+        "caption": "Don't miss these three ramen shops near Shibuya station!",
+        "locationTags": ["Tokyo", "Shibuya"],
+        "entityTags": ["ramen", "restaurant"]
+      },
+      {
+        "videoId": "tk-tokyo-002",
+        "title": "Hidden cafes in Tokyo",
+        "creator": "TravelWithMe",
+        "caption": "Save this for your Tokyo trip! Quiet cafes off the main streets.",
+        "locationTags": ["Tokyo"],
+        "entityTags": ["cafe", "restaurant"]
+      },
+      {
+        "videoId": "tk-tokyo-003",
+        "title": "Shibuya crossing at night",
+        "creator": "NightWalksJP",
+        "caption": "The best time to see Shibuya crossing without the crowds.",
+        "locationTags": ["Tokyo", "Shibuya"],
+        "entityTags": ["sightseeing"]
+      },
+      {
+        "videoId": "tk-tokyo-004",
+        "title": "3-day Tokyo itinerary for first-timers",
+        "creator": "JapanTripPlanner",
+        "caption": "Day-by-day breakdown covering Shibuya, Asakusa, and Akihabara.",
+        "locationTags": ["Tokyo", "Shibuya", "Asakusa", "Akihabara"],
+        "entityTags": ["itinerary", "sightseeing"]
+      },
+      {
+        "videoId": "tk-tokyo-005",
+        "title": "Tokyo packing tips",
+        "creator": "TravelWithMe",
+        "caption": "What to pack for a spring trip to Tokyo.",
+        "locationTags": ["Tokyo"],
+        "entityTags": ["packing", "logistics"]
+      }
+    ],
+    "ws-gym-01": [
+      {
+        "videoId": "tk-gym-001",
+        "title": "Beginner 4-day split explained",
+        "creator": "LiftWithAnna",
+        "caption": "Full breakdown of a 4-day push/pull/legs split for beginners.",
+        "locationTags": [],
+        "entityTags": ["workout", "gym", "beginner"]
+      },
+      {
+        "videoId": "tk-gym-002",
+        "title": "Home vs gym equipment for beginners",
+        "creator": "FitStartHQ",
+        "caption": "What you actually need to start lifting.",
+        "locationTags": [],
+        "entityTags": ["workout", "equipment"]
+      }
+    ],
+    "ws-seoul-01": [
+      {
+        "videoId": "tk-seoul-001",
+        "title": "Best street food alleys in Seoul",
+        "creator": "SeoulEats",
+        "caption": "Myeongdong and Gwangjang market street food guide.",
+        "locationTags": ["Seoul", "Myeongdong", "Gwangjang Market"],
+        "entityTags": ["street food", "restaurant"]
+      },
+      {
+        "videoId": "tk-seoul-002",
+        "title": "Seoul neighborhoods ranked",
+        "creator": "KoreaTripPlanner",
+        "caption": "Hongdae vs Itaewon vs Gangnam — where should you stay?",
+        "locationTags": ["Seoul", "Hongdae", "Itaewon", "Gangnam"],
+        "entityTags": ["neighborhoods", "itinerary"]
+      }
+    ]
+  }
+}

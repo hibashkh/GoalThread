@@ -108,19 +108,53 @@ interface ThreadSignals {
   shared: string[];
   workspaceOverlap: boolean;
   explicitReference: boolean;
+  // This thread's most recent Run came from the same Agent as the Run being
+  // classified — i.e. this is very likely the same live conversation
+  // continuing on the platform's own resumable Codex session, not a
+  // coincidence. See isSameAgentContinuation.
+  sameAgentContinuation: boolean;
   score: number;
 }
 
-// Any two of the three Tier 1 signals agreeing is a strong match and merges
+// Any two of the four Tier 1 signals agreeing is a strong match and merges
 // immediately with no model call; a single signal alone is ambiguous and
 // falls through to Tier 2. (Deliberately not a weighted score — see the
 // build instructions' note against inventing an uncalibrated formula.)
 function isStrongMatch(signals: ThreadSignals): boolean {
-  const agreeingSignals =
+  return countAgreeingSignals(signals) >= 2;
+}
+
+function countAgreeingSignals(signals: {
+  workspaceOverlap: boolean;
+  explicitReference: boolean;
+  shared: string[];
+  sameAgentContinuation: boolean;
+}): number {
+  return (
     (signals.workspaceOverlap ? 1 : 0) +
     (signals.explicitReference ? 1 : 0) +
-    (signals.shared.length > 0 ? 1 : 0);
-  return agreeingSignals >= 2;
+    (signals.shared.length > 0 ? 1 : 0) +
+    (signals.sameAgentContinuation ? 1 : 0)
+  );
+}
+
+// A thread's most recent Run having come from this same Agent is strong,
+// platform-native evidence of continuity: each Agent already keeps one
+// persistent, resumable Codex session (see agent-service.ts), so a follow-up
+// message on the same Agent is very likely still part of the conversation
+// that opened this thread — even when it repeats no entity and uses no
+// reference keyword at all (e.g. "but can you make it a 3-day version").
+// `thread.runIds` is append-only (merge/createNew/fork only ever push), so
+// the last id is always the most recent Run.
+function isSameAgentContinuation(
+  thread: GoalThread,
+  agentId: string,
+  allRuns: AgentRun[],
+): boolean {
+  const lastRunId = thread.runIds.at(-1);
+  if (!lastRunId) return false;
+  const lastRun = allRuns.find((run) => run.id === lastRunId);
+  return lastRun?.agentId === agentId;
 }
 
 function titleFromEntities(entities: string[], prompt: string): string {
@@ -234,9 +268,20 @@ export class GoalThreadEngine {
         agent.id,
         currentWorkspaceFiles,
       );
+      const sameAgentContinuation = isSameAgentContinuation(thread, agent.id, database.runs);
       const score =
-        (workspaceOverlap ? 2 : 0) + (explicitReference ? 2 : 0) + shared.length;
-      signals.push({ thread, shared, workspaceOverlap, explicitReference, score });
+        (workspaceOverlap ? 2 : 0) +
+        (explicitReference ? 2 : 0) +
+        shared.length +
+        (sameAgentContinuation ? 2 : 0);
+      signals.push({
+        thread,
+        shared,
+        workspaceOverlap,
+        explicitReference,
+        sameAgentContinuation,
+        score,
+      });
     }
 
     signals.sort((left, right) => {
@@ -262,13 +307,18 @@ export class GoalThreadEngine {
     }
 
     if (best && isStrongMatch(best)) {
-      return this.merge(input, best.thread, {
-        sharedEntities: best.shared,
-        workspaceOverlap: best.workspaceOverlap,
-        explicitReference: best.explicitReference,
-        semanticNote: this.mergeNote(best),
-        goalShiftDetected: false,
-      });
+      return this.merge(
+        input,
+        best.thread,
+        {
+          sharedEntities: best.shared,
+          workspaceOverlap: best.workspaceOverlap,
+          explicitReference: best.explicitReference,
+          semanticNote: this.mergeNote(best),
+          goalShiftDetected: false,
+        },
+        best.sameAgentContinuation,
+      );
     }
 
     if (!best) {
@@ -322,6 +372,7 @@ export class GoalThreadEngine {
     if (signals.shared.length > 0) parts.push("shared entities: " + signals.shared.join(", "));
     if (signals.workspaceOverlap) parts.push("same workspace content");
     if (signals.explicitReference) parts.push("referenced prior output");
+    if (signals.sameAgentContinuation) parts.push("continuing this Agent's own session");
     return (
       "MERGED into " + signals.thread.title + " — " + (parts.join("; ") || "matched on Tier 1 signals") + "."
     );
@@ -385,9 +436,10 @@ export class GoalThreadEngine {
     candidates: ThreadSignals[],
     result: Tier2Result,
   ): Promise<ThreadDecision> {
-    const target = result.related_thread_id
-      ? candidates.find((c) => c.thread.id === result.related_thread_id)?.thread
+    const matchedCandidate = result.related_thread_id
+      ? candidates.find((c) => c.thread.id === result.related_thread_id)
       : undefined;
+    const target = matchedCandidate?.thread;
 
     if (target && result.goal_shift) {
       const newGoalEntities = contradictingEntities(entities, target.keyEntities);
@@ -400,13 +452,18 @@ export class GoalThreadEngine {
       });
     }
     if (target) {
-      return this.merge(input, target, {
-        sharedEntities: sharedEntities(entities, target.keyEntities),
-        workspaceOverlap: false,
-        explicitReference: false,
-        semanticNote: "MERGED into " + target.title + " (Tier 2): " + result.reason,
-        goalShiftDetected: false,
-      });
+      return this.merge(
+        input,
+        target,
+        {
+          sharedEntities: sharedEntities(entities, target.keyEntities),
+          workspaceOverlap: false,
+          explicitReference: false,
+          semanticNote: "MERGED into " + target.title + " (Tier 2): " + result.reason,
+          goalShiftDetected: false,
+        },
+        matchedCandidate?.sameAgentContinuation,
+      );
     }
     return this.createNew(input, entities, {
       sharedEntities: [],
@@ -433,23 +490,31 @@ export class GoalThreadEngine {
         goalShiftDetected: false,
       });
     }
-    return this.merge(input, best.thread, {
-      sharedEntities: best.shared,
-      workspaceOverlap: best.workspaceOverlap,
-      explicitReference: best.explicitReference,
-      semanticNote:
-        "Tier 2 unavailable (" +
-        failureReason +
-        "); fell back to the best Tier 1 match: " +
-        this.mergeNote(best),
-      goalShiftDetected: false,
-    });
+    return this.merge(
+      input,
+      best.thread,
+      {
+        sharedEntities: best.shared,
+        workspaceOverlap: best.workspaceOverlap,
+        explicitReference: best.explicitReference,
+        semanticNote:
+          "Tier 2 unavailable (" +
+          failureReason +
+          "); fell back to the best Tier 1 match: " +
+          this.mergeNote(best),
+        goalShiftDetected: false,
+      },
+      best.sameAgentContinuation,
+    );
   }
 
   private async merge(
     input: ProcessRunInput,
     thread: GoalThread,
     evidence: ThreadDecisionEvidence,
+    // Not part of the persisted evidence shape (see the Phase 2 schema) but
+    // still counted toward confidence — see isSameAgentContinuation.
+    sameAgentContinuation = false,
   ): Promise<ThreadDecision> {
     const entities = extractEntities(input.run.prompt);
     await this.store.mutate((database) => {
@@ -465,10 +530,12 @@ export class GoalThreadEngine {
       }
       stored.updatedAt = now();
     });
-    const agreeingSignals =
-      (evidence.workspaceOverlap ? 1 : 0) +
-      (evidence.explicitReference ? 1 : 0) +
-      (evidence.sharedEntities.length > 0 ? 1 : 0);
+    const agreeingSignals = countAgreeingSignals({
+      workspaceOverlap: evidence.workspaceOverlap,
+      explicitReference: evidence.explicitReference,
+      shared: evidence.sharedEntities,
+      sameAgentContinuation,
+    });
     const confidence = agreeingSignals >= 2 ? 0.9 : 0.65;
     return this.persistDecision(input, {
       decision: "MERGE",

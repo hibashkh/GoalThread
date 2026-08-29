@@ -196,11 +196,12 @@ describe("GoalThreadEngine — Tier 2 (model-assisted) path", () => {
     await seedDatabase(store, [agent], [runA]);
     const first = await engine.processRun({ run: runA, agent });
 
-    // "Continue" is an explicit-reference signal, but there's no shared
-    // entity and no workspace overlap — a weak/mixed Tier 1 signal (present,
-    // but not strong) that must escalate to Tier 2 rather than being
-    // auto-classified by Tier 1 alone.
-    const runB = makeRun(agent, "Continue with the next step for the trip.");
+    // Same Agent continuing (1 signal) but zero entities and no
+    // explicit-reference keyword — exactly the plain-follow-up-chat case
+    // that must escalate to Tier 2 rather than being auto-classified by
+    // Tier 1 alone (one signal isn't enough on its own to merge or to stay
+    // separate).
+    const runB = makeRun(agent, "What should we tackle after this?");
     await store.mutate((database) => database.runs.push(runB));
     const decision = await engine.processRun({ run: runB, agent });
 
@@ -208,6 +209,33 @@ describe("GoalThreadEngine — Tier 2 (model-assisted) path", () => {
     expect(decision.decision).toBe("NEW");
     expect(engine.listThreads()).toHaveLength(2);
     expect(first.decision).toBe("NEW");
+  });
+
+  it("treats a same-Agent follow-up plus one other signal as a strong match with no model call", async () => {
+    const { store, root } = await makeStore();
+    const agent = await makeAgent(root);
+    const runA = makeRun(agent, "Research good coffee shops in Lisbon.");
+    let tier2Calls = 0;
+    const engine = new GoalThreadEngine(makeConfig(), store, {
+      tier2: async () => {
+        tier2Calls += 1;
+        return { related_thread_id: null, goal_shift: false, reason: "unused" };
+      },
+    });
+    await seedDatabase(store, [agent], [runA]);
+    await engine.processRun({ run: runA, agent });
+
+    // Same Agent continuing + an explicit-reference keyword ("continue") —
+    // two agreeing signals, so this must merge immediately without paying
+    // for a Tier 2 call, even though it shares no entity with the thread.
+    // This is the actual fix for plain chat over-splitting into new threads.
+    const runB = makeRun(agent, "Continue with the next step for the trip.");
+    await store.mutate((database) => database.runs.push(runB));
+    const decision = await engine.processRun({ run: runB, agent });
+
+    expect(decision.decision).toBe("MERGE");
+    expect(tier2Calls).toBe(0);
+    expect(engine.listThreads()).toHaveLength(1);
   });
 
   it("follows a Tier 2 merge verdict", async () => {
@@ -227,7 +255,7 @@ describe("GoalThreadEngine — Tier 2 (model-assisted) path", () => {
     await seedDatabase(store, [agent], [runA]);
     await engine.processRun({ run: runA, agent });
 
-    const runB = makeRun(agent, "Continue with the next step for the trip.");
+    const runB = makeRun(agent, "What should we tackle after this?");
     await store.mutate((database) => database.runs.push(runB));
     const decision = await engine.processRun({ run: runB, agent });
 
@@ -247,7 +275,7 @@ describe("GoalThreadEngine — Tier 2 (model-assisted) path", () => {
     await seedDatabase(store, [agent], [runA]);
     await engine.processRun({ run: runA, agent });
 
-    const runB = makeRun(agent, "Continue with the next step for the trip.");
+    const runB = makeRun(agent, "What should we tackle after this?");
     await store.mutate((database) => database.runs.push(runB));
 
     // Tier 2 is unavailable, so the engine falls back to the best Tier 1
@@ -343,15 +371,26 @@ describe("GoalThreadEngine — context isolation across fork/close", () => {
 
     // The Seoul Run itself must not have silently merged back into the
     // closed Tokyo thread just because it referenced "earlier" restaurants.
+    // (This particular Run is a strong Tier 1 match on its own — explicit
+    // reference + same-Agent continuation — so it never needs Tier 2 at all;
+    // that's the correct, cheaper outcome, and it's exercised below with a
+    // follow-up that genuinely is ambiguous.)
     const runEDecision = engine.getDecisionForRun(runE.id);
     expect(runEDecision?.targetThreadId).not.toBe(tokyoThreadId);
     expect(runEDecision?.targetThreadId).toBe(seoulThreadId);
 
-    // The Tier 2 prompt itself — the actual boundary a real model call would
-    // see — must never contain the closed Tokyo thread's id or its Runs'
-    // text, even though this Run's own wording ("earlier", "Shibuya") is
-    // exactly the kind of phrasing that could tempt a naive implementation
-    // to pull the parent thread back in.
+    // Follow-up with zero entities and no reference keyword — only
+    // same-Agent continuation fires, a single signal that must escalate to
+    // Tier 2. This is the real boundary a live model call would see, so
+    // it's the meaningful place to prove isolation: even though Seoul's own
+    // Run history literally contains the word "Tokyo" (runD's own wording,
+    // "forget Tokyo"), the closed thread's separate id and its Runs' text
+    // must never appear in what gets sent to the model.
+    const runF = makeRun(agent, "What else should we check before booking anything?");
+    await store.mutate((database) => database.runs.push(runF));
+    const runFDecision = await engine.processRun({ run: runF, agent });
+
+    expect(runFDecision.targetThreadId).toBe(seoulThreadId);
     const lastPrompt = capturedPrompts.at(-1);
     expect(lastPrompt).toBeDefined();
     expect(lastPrompt).not.toContain(tokyoThreadId);
