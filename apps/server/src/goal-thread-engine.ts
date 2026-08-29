@@ -5,6 +5,7 @@ import { isArkConfigured } from "./config.js";
 import { ArkCallError, callArkStructured } from "./ark-client.js";
 import {
   contradictingEntities,
+  deriveFallbackTitle,
   extractEntities,
   hasExplicitReference,
   hasGoalShiftSignal,
@@ -161,8 +162,7 @@ function titleFromEntities(entities: string[], prompt: string): string {
   if (entities.length > 0) {
     return entities.slice(0, 2).join(" & ");
   }
-  const words = prompt.trim().split(/\s+/).slice(0, 6).join(" ");
-  return words.length > 0 ? words : "Untitled goal";
+  return deriveFallbackTitle(prompt);
 }
 
 export class GoalThreadEngine {
@@ -378,12 +378,24 @@ export class GoalThreadEngine {
     );
   }
 
+  // Cap on how many candidate threads get offered to Tier 2, to bound prompt
+  // size against a pathological number of open threads. Live regression
+  // testing tried raising this from 3 to 12 to fix a rare long-range
+  // disambiguation miss (an older, dormant thread excluded from the
+  // candidate list by recency truncation) — but a wider candidate pool
+  // measurably made the common case worse (38/40 vs 39/40 strict matches,
+  // with new cross-domain leaks from shallow "these are all book
+  // recommendations"-style over-merging). Kept at 3: the narrow edge case
+  // it doesn't solve is documented as a known limitation in the README
+  // rather than "fixed" at the cost of the common case regressing.
+  private static readonly MAX_TIER2_CANDIDATES = 3;
+
   private async classifyWithTier2(
     input: ProcessRunInput,
     entities: string[],
     candidates: ThreadSignals[],
   ): Promise<ThreadDecision> {
-    const topCandidates = candidates.slice(0, 3);
+    const topCandidates = candidates.slice(0, GoalThreadEngine.MAX_TIER2_CANDIDATES);
 
     if (!isArkConfigured(this.config)) {
       return this.tier1FallbackDecision(input, entities, topCandidates, "Ark is not configured");
@@ -395,6 +407,18 @@ export class GoalThreadEngine {
     const userPrompt = this.buildTier2UserPrompt(input.run.prompt, topCandidates);
 
     try {
+      // Demo/testing-only fault injection: Codex's own model access (via
+      // codex-home/config.toml) shares this same ARK_API_KEY, so breaking
+      // the real key to demo Tier 2 failing would also break every Codex
+      // Run — not the isolated "GoalThread degrades gracefully" case this
+      // is meant to show. This flag simulates a Tier 2 outage without
+      // touching Codex at all, so the Run itself still completes normally.
+      // See README's failure/degraded-case demo script.
+      if (process.env.GOALTHREAD_FORCE_TIER2_FAILURE === "1") {
+        throw new ArkCallError(
+          "Simulated Tier 2 outage (GOALTHREAD_FORCE_TIER2_FAILURE=1)",
+        );
+      }
       const result = await this.tier2({
         systemPrompt: TIER2_SYSTEM_PROMPT,
         userPrompt,

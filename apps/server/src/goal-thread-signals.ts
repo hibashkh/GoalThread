@@ -20,6 +20,13 @@ const ENTITY_STOPWORDS = new Set([
   "need", "want", "would", "should", "must", "will", "shall", "don't",
   "dont", "do", "does", "did", "is", "are", "was", "were", "be", "been",
   "being", "it", "its", "it's", "my", "your", "our", "their", "his", "her",
+  // Also used to filter thread-title fallback text (see deriveFallbackTitle)
+  // — these matter far more there, since titles run this filter over every
+  // word in the sentence, not just capitalized ones.
+  "me", "you", "we", "us", "them", "they", "he", "she", "him", "of", "in",
+  "on", "at", "by", "to", "too", "some", "any", "all", "one", "ones",
+  "there", "here", "not", "no", "if", "as", "up", "out", "off", "over",
+  "under", "than", "such", "some", "other", "another", "same", "each",
 ]);
 
 /**
@@ -48,6 +55,31 @@ export function extractEntities(text: string): string[] {
   });
 
   return [...found];
+}
+
+/**
+ * Short, readable fallback title for a thread whose opening Run had no
+ * extractable entities — e.g. "Give me a 4-day beginner gym routine." should
+ * read as "4-day Beginner Gym Routine" on a thread card, not a raw
+ * first-N-words truncation like "Give me a 4-day beginner gym". Strips the
+ * same stopwords used for entity extraction from the whole sentence (not
+ * just the leading run of them), keeps the first few remaining content
+ * words, and Title Cases them. This is a label, not a sentence — dropping
+ * mid-sentence function words is intentional, not a grammar mistake.
+ */
+export function deriveFallbackTitle(prompt: string): string {
+  const cleaned = prompt.replace(/[?!.]+$/, "").trim();
+  if (!cleaned) return "Untitled goal";
+  const words = cleaned.split(/\s+/);
+  const contentWords = words.filter((word) => {
+    const normalized = word.toLowerCase().replace(/[^a-z0-9'-]/g, "");
+    return normalized.length > 0 && !ENTITY_STOPWORDS.has(normalized);
+  });
+  const chosen = (contentWords.length > 0 ? contentWords : words).slice(0, 5);
+  const titled = chosen
+    .map((word) => (word.length > 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(" ");
+  return titled.length > 0 ? titled : "Untitled goal";
 }
 
 const EXPLICIT_REFERENCE_PATTERN =

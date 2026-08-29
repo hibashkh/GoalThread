@@ -288,6 +288,34 @@ describe("GoalThreadEngine — Tier 2 (model-assisted) path", () => {
     expect(engine.listThreads()).toHaveLength(1);
   });
 
+  it("degrades gracefully via GOALTHREAD_FORCE_TIER2_FAILURE without touching the real Tier 2 client", async () => {
+    const { store, root } = await makeStore();
+    const agent = await makeAgent(root);
+    const runA = makeRun(agent, "Research good coffee shops in Lisbon.");
+    let realTier2Calls = 0;
+    const engine = new GoalThreadEngine(makeConfig(), store, {
+      tier2: async () => {
+        realTier2Calls += 1;
+        return { related_thread_id: null, goal_shift: false, reason: "unused" };
+      },
+    });
+    await seedDatabase(store, [agent], [runA]);
+    await engine.processRun({ run: runA, agent });
+
+    const runB = makeRun(agent, "What should we tackle after this?");
+    await store.mutate((database) => database.runs.push(runB));
+
+    process.env.GOALTHREAD_FORCE_TIER2_FAILURE = "1";
+    try {
+      const decision = await engine.processRun({ run: runB, agent });
+      expect(decision.decision).toBe("MERGE");
+      expect(decision.evidence.semanticNote).toContain("Simulated Tier 2 outage");
+      expect(realTier2Calls).toBe(0);
+    } finally {
+      delete process.env.GOALTHREAD_FORCE_TIER2_FAILURE;
+    }
+  });
+
   it("never throws even if the engine hits an unexpected internal error", async () => {
     const { store, root } = await makeStore();
     const agent = await makeAgent(root);
