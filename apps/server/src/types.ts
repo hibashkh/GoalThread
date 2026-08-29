@@ -43,11 +43,48 @@ export interface AgentRun {
   createdAt: string;
 }
 
+export type ThreadStatus = "ACTIVE" | "CLOSED";
+export type ThreadDecisionKind = "MERGE" | "NEW" | "FORK";
+
+export interface GoalThread {
+  id: string;
+  title: string;
+  status: ThreadStatus;
+  summary: string;
+  createdAt: string;
+  updatedAt: string;
+  runIds: string[];
+  keyEntities: string[];
+  parentThreadId?: string | null;
+  closedReason?: string | null;
+}
+
+export interface ThreadDecisionEvidence {
+  sharedEntities: string[];
+  workspaceOverlap: boolean;
+  explicitReference: boolean;
+  semanticNote: string;
+  goalShiftDetected: boolean;
+}
+
+export interface ThreadDecision {
+  id: string;
+  runId: string;
+  agentId: string;
+  decision: ThreadDecisionKind;
+  confidence: number;
+  targetThreadId: string;
+  evidence: ThreadDecisionEvidence;
+  createdAt: string;
+}
+
 export interface Database {
   version: 1;
   agents: Agent[];
   messages: Message[];
   runs: AgentRun[];
+  goalThreads: GoalThread[];
+  threadDecisions: ThreadDecision[];
 }
 
 export interface CreateAgentInput {

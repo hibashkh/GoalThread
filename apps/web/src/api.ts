@@ -1,4 +1,11 @@
-import type { Agent, AgentRun, Message, SystemInfo } from "./types";
+import type {
+  Agent,
+  AgentRun,
+  GoalThread,
+  Message,
+  SystemInfo,
+  ThreadDecision,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -78,4 +85,13 @@ export const api = {
       },
     ),
   run: (id: string) => request<{ run: AgentRun }>("/api/runs/" + id),
+  goalThreads: () => request<{ goalThreads: GoalThread[] }>("/api/goal-threads"),
+  goalThread: (id: string) =>
+    request<{ goalThread: GoalThread }>("/api/goal-threads/" + id),
+  goalThreadRuns: (id: string) =>
+    request<{ runs: AgentRun[] }>("/api/goal-threads/" + id + "/runs"),
+  runThreadDecision: (runId: string) =>
+    request<{ threadDecision: ThreadDecision }>(
+      "/api/runs/" + runId + "/thread-decision",
+    ),
 };

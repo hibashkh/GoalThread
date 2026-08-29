@@ -7,6 +7,8 @@ const emptyDatabase = (): Database => ({
   agents: [],
   messages: [],
   runs: [],
+  goalThreads: [],
+  threadDecisions: [],
 });
 
 export class JsonStore {
@@ -23,6 +25,10 @@ export class JsonStore {
       if (parsed.version !== 1 || !Array.isArray(parsed.agents)) {
         throw new Error("Unsupported database format");
       }
+      // Older on-disk databases predate the GoalThread middleware; default
+      // the new collections rather than treating the file as unsupported.
+      if (!Array.isArray(parsed.goalThreads)) parsed.goalThreads = [];
+      if (!Array.isArray(parsed.threadDecisions)) parsed.threadDecisions = [];
       this.data = parsed;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {

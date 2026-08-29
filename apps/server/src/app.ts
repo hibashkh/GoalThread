@@ -7,9 +7,12 @@ import { z } from "zod";
 import type { AppConfig } from "./config.js";
 import { HttpError } from "./errors.js";
 import type { AgentService } from "./agent-service.js";
+import type { GoalThreadEngine } from "./goal-thread-engine.js";
 
 const agentIdParams = z.object({ id: z.string().uuid() });
 const runIdParams = z.object({ id: z.string().uuid() });
+const threadIdParams = z.object({ id: z.string().uuid() });
+const runThreadDecisionParams = z.object({ runId: z.string().uuid() });
 const createAgentBody = z.object({
   name: z.string().trim().min(1).max(80),
   description: z.string().max(500).optional(),
@@ -26,6 +29,7 @@ const messageBody = z.object({
 export async function createApp(
   config: AppConfig,
   service: AgentService,
+  goalThreads?: GoalThreadEngine,
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
@@ -126,6 +130,32 @@ export async function createApp(
   app.get("/api/runs/:id", async (request) => {
     const { id } = runIdParams.parse(request.params);
     return { run: service.getRun(id) };
+  });
+
+  app.get("/api/goal-threads", async () => ({
+    goalThreads: goalThreads?.listThreads() ?? [],
+  }));
+
+  app.get("/api/goal-threads/:id", async (request) => {
+    const { id } = threadIdParams.parse(request.params);
+    const thread = goalThreads?.getThread(id);
+    if (!thread) throw new HttpError(404, "Goal thread not found");
+    return { goalThread: thread };
+  });
+
+  app.get("/api/goal-threads/:id/runs", async (request) => {
+    const { id } = threadIdParams.parse(request.params);
+    if (!goalThreads?.getThread(id)) throw new HttpError(404, "Goal thread not found");
+    // Scoped strictly to this thread's own Runs — see GoalThreadEngine.getThreadContext.
+    const { runs } = goalThreads.getThreadContext(id);
+    return { runs };
+  });
+
+  app.get("/api/runs/:runId/thread-decision", async (request) => {
+    const { runId } = runThreadDecisionParams.parse(request.params);
+    const decision = goalThreads?.getDecisionForRun(runId);
+    if (!decision) throw new HttpError(404, "No thread decision recorded for this Run");
+    return { threadDecision: decision };
   });
 
   if (config.nodeEnv === "production") {

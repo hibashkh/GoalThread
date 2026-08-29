@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, setAuthToken } from "./api";
+import GoalThreadsPanel from "./GoalThreadsPanel";
 import type { Agent, AgentRun, Message, SystemInfo } from "./types";
 
 const starterPrompts = [
@@ -41,6 +42,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showGoalThreads, setShowGoalThreads] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [prompt, setPrompt] = useState("");
@@ -329,6 +331,13 @@ export default function App() {
           }}
         >
           <span>＋</span> Create Agent
+        </button>
+
+        <button
+          className="button button-ghost goal-threads-button"
+          onClick={() => setShowGoalThreads(true)}
+        >
+          <span>⛓</span> Goal Threads
         </button>
 
         <div className="sidebar-label">
@@ -665,6 +674,8 @@ export default function App() {
           </form>
         </div>
       )}
+
+      {showGoalThreads && <GoalThreadsPanel onClose={() => setShowGoalThreads(false)} />}
     </div>
   );
 }

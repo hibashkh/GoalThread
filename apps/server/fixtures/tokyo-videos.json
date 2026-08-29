@@ -1,0 +1,29 @@
+{
+  "source": "mock saved video captions — not a real TikTok/Instagram export",
+  "videos": [
+    {
+      "id": "vid-001",
+      "caption": "Incredible tsukemen at this tiny spot near Shinjuku, cash only, get there before 6pm",
+      "location": "Shinjuku, Tokyo",
+      "tags": ["ramen", "tsukemen", "shinjuku"]
+    },
+    {
+      "id": "vid-002",
+      "caption": "Best conveyor belt sushi I've had, right by Shibuya crossing",
+      "location": "Shibuya, Tokyo",
+      "tags": ["sushi", "shibuya", "kaiten-zushi"]
+    },
+    {
+      "id": "vid-003",
+      "caption": "Late night yakitori alley, order the tsukune, ask for the negi salt",
+      "location": "Shibuya, Tokyo",
+      "tags": ["yakitori", "shibuya", "izakaya"]
+    },
+    {
+      "id": "vid-004",
+      "caption": "Hidden coffee shop with the best matcha soft serve, easy to miss the entrance",
+      "location": "Harajuku, Tokyo",
+      "tags": ["cafe", "matcha", "harajuku"]
+    }
+  ]
+}

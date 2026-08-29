@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import type { AppConfig } from "./config.js";
 import { RunCancelledError } from "./errors.js";
@@ -11,6 +13,48 @@ import type {
 } from "./types.js";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * A plain npm global install of Codex CLI on Windows only produces a
+ * PATHEXT-resolvable `codex.cmd` shim (alongside a POSIX `codex` script
+ * Windows CreateProcess cannot run). Since a Node.js security fix, running a
+ * .cmd/.bat file requires opting into `shell: true` — but that passes
+ * arguments to cmd.exe without escaping them (Node's own DEP0190 warning),
+ * which would turn arbitrary task text into a command-injection vector.
+ *
+ * Instead of going through a shell at all, this resolves the .cmd shim to
+ * the Node.js script it wraps (the standard npm-generated shim layout: a
+ * quoted "%dp0%\...js" path invoked with the current Node binary) and spawns
+ * that script directly with Node — the normal, safe, unescaped argv path.
+ * Scoped to win32 only; the documented Linux/Docker/ECS deployment path is
+ * untouched. Returns null if resolution fails for any reason, in which case
+ * callers fall back to the plain `codexBin`, matching pre-fix behavior.
+ */
+function resolveWindowsCodexInvocation(
+  bin: string,
+): { command: string; prefixArgs: string[] } | null {
+  if (process.platform !== "win32") return null;
+  if (/\.(cmd|bat|exe|ps1)$/i.test(bin)) return null; // already fully specified
+  const pathDirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const dir of pathDirs) {
+    for (const ext of [".cmd", ".bat"]) {
+      const shimPath = path.join(dir, bin + ext);
+      if (!existsSync(shimPath)) continue;
+      try {
+        const content = readFileSync(shimPath, "utf8");
+        const match = /"%dp0%\\([^"]+\.js)"\s+%\*/i.exec(content);
+        if (!match?.[1]) continue;
+        const scriptPath = path.join(path.dirname(shimPath), match[1]);
+        if (existsSync(scriptPath)) {
+          return { command: process.execPath, prefixArgs: [scriptPath] };
+        }
+      } catch {
+        // Try the next candidate rather than failing Codex availability.
+      }
+    }
+  }
+  return null;
+}
 
 export interface ParsedEvents {
   messages: string[];
@@ -98,12 +142,29 @@ export class CodexRunner implements AgentRunner {
       forceKillTimer: NodeJS.Timeout | null;
     }
   >();
+  private windowsInvocationResolved = false;
+  private windowsInvocation: { command: string; prefixArgs: string[] } | null = null;
 
   constructor(private readonly config: AppConfig) {}
 
+  private codexInvocation(codexArgs: string[]): { command: string; args: string[] } {
+    if (!this.windowsInvocationResolved) {
+      this.windowsInvocation = resolveWindowsCodexInvocation(this.config.codexBin);
+      this.windowsInvocationResolved = true;
+    }
+    if (this.windowsInvocation) {
+      return {
+        command: this.windowsInvocation.command,
+        args: [...this.windowsInvocation.prefixArgs, ...codexArgs],
+      };
+    }
+    return { command: this.config.codexBin, args: codexArgs };
+  }
+
   async isAvailable(): Promise<boolean> {
+    const { command, args } = this.codexInvocation(["--version"]);
     try {
-      await execFileAsync(this.config.codexBin, ["--version"], {
+      await execFileAsync(command, args, {
         timeout: 5_000,
         env: this.childEnvironment(),
       });
@@ -129,8 +190,9 @@ export class CodexRunner implements AgentRunner {
       throw new Error("Agent already has an active Codex process");
     }
 
-    const args = buildCodexArgs(request, this.config.codexSandboxMode);
-    const child = spawn(this.config.codexBin, args, {
+    const codexArgs = buildCodexArgs(request, this.config.codexSandboxMode);
+    const { command, args } = this.codexInvocation(codexArgs);
+    const child = spawn(command, args, {
       cwd: request.workspacePath,
       env: this.childEnvironment(),
       stdio: ["ignore", "pipe", "pipe"],

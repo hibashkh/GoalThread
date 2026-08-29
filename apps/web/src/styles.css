@@ -1012,6 +1012,157 @@ textarea:focus {
   }
 }
 
+/* GoalThread middleware panel */
+
+.goal-threads-button {
+  margin-top: 8px;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.goal-threads-modal {
+  width: min(640px, 100%);
+  max-height: 82vh;
+  overflow-y: auto;
+}
+
+.goal-thread-empty {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.thread-list {
+  display: grid;
+  gap: 10px;
+}
+
+.thread-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffffa8;
+}
+
+.thread-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.thread-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thread-card-meta {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.thread-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.thread-status-active {
+  background: #e4f4ec;
+  color: var(--green);
+}
+
+.thread-status-closed {
+  background: #eeedf3;
+  color: var(--muted);
+}
+
+.thread-run-list {
+  border-top: 1px solid var(--line);
+  padding: 10px 14px 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.thread-closed-reason {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.thread-run-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.thread-run-item.selected {
+  border-color: var(--purple);
+  background: var(--purple-soft);
+}
+
+.thread-decision {
+  margin: 4px 0 8px 10px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--purple);
+  background: var(--purple-soft);
+  border-radius: 0 9px 9px 0;
+}
+
+.thread-decision-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.decision-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: white;
+}
+
+.decision-merge {
+  background: var(--green);
+}
+
+.decision-new {
+  background: var(--purple);
+}
+
+.decision-fork {
+  background: var(--red);
+}
+
+.evidence-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
+
 @media (max-width: 680px) {
   .app-shell {
     display: block;

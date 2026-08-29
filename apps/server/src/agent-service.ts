@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AppConfig } from "./config.js";
 import { isArkConfigured } from "./config.js";
 import { HttpError, RunCancelledError } from "./errors.js";
+import type { GoalThreadEngine } from "./goal-thread-engine.js";
 import { JsonStore } from "./store.js";
 import type {
   Agent,
@@ -24,6 +25,7 @@ export class AgentService {
     private readonly store: JsonStore,
     private readonly workspaces: WorkspaceManager,
     private readonly runner: AgentRunner,
+    private readonly goalThreads?: GoalThreadEngine,
   ) {}
 
   async initialize(): Promise<void> {
@@ -251,10 +253,10 @@ export class AgentService {
         threadId: agentAtStart.codexThreadId,
       });
       const completedAt = now();
-      await this.store.mutate((database) => {
+      const completedRun = await this.store.mutate((database) => {
         const storedRun = database.runs.find((item) => item.id === run.id);
         const agent = database.agents.find((item) => item.id === agentAtStart.id);
-        if (!storedRun || !agent) return;
+        if (!storedRun || !agent) return null;
         storedRun.status = "completed";
         storedRun.output = result.output;
         storedRun.usage = result.usage;
@@ -271,7 +273,22 @@ export class AgentService {
         agent.codexThreadId = result.threadId;
         agent.lastError = null;
         agent.updatedAt = completedAt;
+        return structuredClone(storedRun);
       });
+      // GoalThread middleware: runs once per completed Run. Fire-and-forget
+      // from the caller's perspective — the Run above is already persisted
+      // as completed, so any engine failure here must never surface as a
+      // Run failure. The engine itself also never throws (see
+      // GoalThreadEngine.processRun), this catch is defense in depth.
+      if (this.goalThreads && completedRun) {
+        try {
+          await this.goalThreads.processRun({ run: completedRun, agent: agentAtStart });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          // eslint-disable-next-line no-console -- no logger is threaded this deep
+          console.error("GoalThreadEngine failed to process run " + run.id + ": " + message);
+        }
+      }
     } catch (error) {
       const completedAt = now();
       const cancelled = error instanceof RunCancelledError;
