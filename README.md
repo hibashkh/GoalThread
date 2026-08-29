@@ -39,6 +39,22 @@ a forked or closed thread's context can never leak into its successor.**
 
 ## The problem, precisely
 
+You've saved 200 TikToks — restaurants, books, workout routines, apartment
+ideas — meaning to actually *do* something with them. So you ask an AI
+Agent to help: "pull the restaurants out of my Tokyo videos." A few days
+later, in a different chat, "which of those are near Shibuya?" Later still,
+a different Agent entirely, "build me a 3-day itinerary from those." Each
+of those asks is a small step toward one real goal, but the platform sees
+three disconnected messages. Add a genuinely unrelated ask in between
+("give me a gym routine") and a goal change later ("actually, forget Tokyo,
+I'm doing Seoul instead"), and the problem is no longer "remember one
+conversation" — it's "notice which scattered conversations belong together,
+which don't, and when a goal has quietly changed underneath you." That's
+the overwhelm: not the saving, the *losing track* of what each saved-and-
+half-acted-on thing was even for.
+
+In platform terms:
+
 > Run A (Agent 1): "Extract restaurants from my saved Tokyo travel videos."
 > Run B (Agent 2, started separately): "Which of those are near Shibuya?"
 > Run C: "Build a 3-day itinerary from those places."
