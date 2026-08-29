@@ -148,9 +148,16 @@ export class CodexRunner implements AgentRunner {
   constructor(private readonly config: AppConfig) {}
 
   private codexInvocation(codexArgs: string[]): { command: string; args: string[] } {
+    // Only cache a successful resolution — retry on every call until one
+    // succeeds, rather than permanently locking in a transient early
+    // failure (e.g. a slow first filesystem access) for the server's whole
+    // lifetime. resolveWindowsCodexInvocation is a handful of synchronous
+    // existsSync calls, cheap enough to retry.
     if (!this.windowsInvocationResolved) {
       this.windowsInvocation = resolveWindowsCodexInvocation(this.config.codexBin);
-      this.windowsInvocationResolved = true;
+      if (this.windowsInvocation) {
+        this.windowsInvocationResolved = true;
+      }
     }
     if (this.windowsInvocation) {
       return {
