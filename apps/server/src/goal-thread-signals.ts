@@ -27,6 +27,7 @@ const ENTITY_STOPWORDS = new Set([
   "on", "at", "by", "to", "too", "some", "any", "all", "one", "ones",
   "there", "here", "not", "no", "if", "as", "up", "out", "off", "over",
   "under", "than", "such", "some", "other", "another", "same", "each",
+  "going", "yes", "no", "okay", "ok", "sure", "including",
 ]);
 
 /**
@@ -35,6 +36,16 @@ const ENTITY_STOPWORDS = new Set([
  * sentence-initial and stopword filters. Intentionally simple — a real NER
  * model is out of scope for a Tier 1 signal that must be cheap and always
  * computed.
+ *
+ * Fallback for casual, fully-lowercase typing (e.g. "actually forget tokyo,
+ * im going to seoul instead") — very common in real chat, and without this
+ * the goal-shift/fork logic goes blind: it needs a "new entity not already
+ * in the thread" to fork on, and capitalization-only extraction finds
+ * nothing in an all-lowercase message. If the message has zero capitalized
+ * words anywhere (not just at index 0), fall back to case-insensitive
+ * content-word extraction instead of the strict capitalized-only rule.
+ * Properly-capitalized text is unaffected — this only activates when there
+ * is nothing capitalized to find in the first place.
  */
 export function extractEntities(text: string): string[] {
   const found = new Set<string>();
@@ -45,12 +56,24 @@ export function extractEntities(text: string): string[] {
   }
 
   const words = text.split(/\s+/);
+  // Checked across the WHOLE message, including the sentence-initial word —
+  // ordinary English capitalizes that regardless of whether it's a proper
+  // noun ("Build a todo app" has no entities but is still "capitalized"),
+  // so it has to count here for the fallback below to only activate on
+  // genuinely all-lowercase typing, not every normal sentence.
+  const hasCapitalizedWord = words.some((raw) => {
+    const word = raw.replace(/[^A-Za-z'-]/g, "");
+    return word.length >= 3 && /^[A-Z]/.test(word);
+  });
+
   words.forEach((raw, index) => {
     const word = raw.replace(/[^A-Za-z'-]/g, "");
     if (word.length < 3) return;
-    if (!/^[A-Z][a-zA-Z'-]*$/.test(word)) return;
     if (index === 0) return; // sentence-initial capital is not a reliable signal
     if (ENTITY_STOPWORDS.has(word.toLowerCase())) return;
+    if (hasCapitalizedWord) {
+      if (!/^[A-Z][a-zA-Z'-]*$/.test(word)) return;
+    }
     found.add(word);
   });
 
