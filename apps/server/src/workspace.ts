@@ -1,6 +1,21 @@
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Agent } from "./types.js";
+
+// GoalThread demo fixture: mock saved-video captions (not a real TikTok
+// integration — see fixtures/goalthread-regression-dataset.json's own
+// description, and the README's problem statement). Auto-copied into every
+// new Agent's workspace so the demo needs no manual seeding step — it
+// models every Agent having access to the same synced saved-video library
+// from the moment it's created, which is both more realistic than a manual
+// per-Agent copy step and removes an artificial-looking setup step from the
+// live demo. Missing the fixture (e.g. a stripped-down checkout) is
+// non-fatal — Agent creation must never fail because of a demo convenience.
+const DEMO_FIXTURE_PATH = fileURLToPath(
+  new URL("../fixtures/tokyo-videos.json", import.meta.url),
+);
+const DEMO_FIXTURE_NAME = "tokyo-videos.json";
 
 export class WorkspaceManager {
   constructor(private readonly root: string) {}
@@ -33,6 +48,14 @@ export class WorkspaceManager {
       ].join("\n"),
       "utf8",
     );
+    try {
+      await copyFile(
+        DEMO_FIXTURE_PATH,
+        path.join(agent.workspacePath, DEMO_FIXTURE_NAME),
+      );
+    } catch {
+      // Non-fatal — see DEMO_FIXTURE_PATH's comment above.
+    }
   }
 
   async writeInstructions(agent: Agent): Promise<void> {

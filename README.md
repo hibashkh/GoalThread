@@ -217,6 +217,12 @@ Threads) before a fresh demo run:
 npm run reset-demo
 ```
 
+Every new Agent's workspace is auto-seeded with the demo fixture at creation
+time (see step 1 below) — `npm run seed-demo` and
+`node scripts/seed-goalthread-fixture.mjs <id>` still exist as optional
+manual tools (e.g. to re-seed a specific fixture variant into an existing
+Agent), but the standard demo below doesn't need either of them.
+
 ## Live demo script
 
 ### Normal case (five scenarios)
@@ -225,42 +231,30 @@ Run these through the browser Playground across **genuinely separate
 Agents** where noted — that's the part single-Agent session continuity
 can't already explain on its own.
 
-1. **Create Agent "Tokyo Explorer".** Send:
+1. **Create Agent "Tokyo Explorer".** Every new Agent's workspace is
+   auto-seeded with the mock saved-video fixture the moment it's created
+   (`WorkspaceManager.create()` in [workspace.ts](apps/server/src/workspace.ts)) —
+   no manual seeding step needed. Send:
    `Extract restaurants from my saved Tokyo travel videos.`
    → **NEW** thread "Tokyo" (open the **Goal Threads** button in the sidebar
    to see it: `NEW`, 100% confidence, "No Tier 1 signal matched an open
    thread").
-2. **Create a second Agent "Trip Planner"** — don't send it anything yet.
-3. Seed the shared fixture into *both* Agents' workspaces now that both
-   exist (models the same saved-video source being reused across Agents).
-   First look up their real ids — `AGENT_ID_HERE` below is a placeholder to
-   replace, not literal text to type:
-   ```bash
-   curl http://localhost:3000/api/agents
-   ```
-   ```powershell
-   Invoke-RestMethod http://localhost:3000/api/agents | Select-Object -ExpandProperty agents | Select-Object id, name
-   ```
-   Then, substituting each Agent's real id (a UUID, e.g.
-   `62b0a542-db6a-421c-9173-47f30e96e935`) for `AGENT_ID_HERE`:
-   ```bash
-   node scripts/seed-goalthread-fixture.mjs AGENT_ID_HERE
-   ```
-   Run it once per Agent — once with Tokyo Explorer's id, once with Trip
-   Planner's.
-4. On Trip Planner, send: `Which of those Tokyo spots are near Shibuya?`
+2. **Create a second Agent "Trip Planner"** — it gets the same fixture
+   automatically too, modeling the same saved-video source being reused
+   across separate Agents.
+3. On Trip Planner, send: `Which of those Tokyo spots are near Shibuya?`
    → **MERGE** into Tokyo — workspace overlap + explicit reference, two
    agreeing signals, no model call.
-5. Same Agent: `Build a 3-day itinerary from those places.`
+4. Same Agent: `Build a 3-day itinerary from those places.`
    → **MERGE** into Tokyo again.
-6. **Create a third Agent "Fitness Coach".** Send:
+5. **Create a third Agent "Fitness Coach".** Send:
    `Give me a 4-day beginner gym routine.`
    → **NEW**, a completely separate thread — proves it doesn't get pulled
    into Tokyo just because it happened around the same time.
-7. Back on Trip Planner: `Actually forget Tokyo, I'm going to Seoul instead.`
+6. Back on Trip Planner: `Actually forget Tokyo, I'm going to Seoul instead.`
    → **FORK** — Tokyo closes (`closedReason` visible in the panel), a new
    Seoul thread opens with `parentThreadId` pointing at Tokyo.
-8. Open **Goal Threads** and expand each thread to see its Runs; click a
+7. Open **Goal Threads** and expand each thread to see its Runs; click a
    Run to see its full `ThreadDecision` — decision, confidence, evidence
    bullets, exactly as computed above.
 
@@ -387,6 +381,16 @@ backend already decided — no decision logic in
   `shell: true`) — neither is GoalThread logic, both are `win32`-gated and
   don't touch the documented Linux/Docker/ECS path. Included because local
   development happened on Windows.
+- **`CODEX_SANDBOX_MODE=workspace-write` is unreliable on Windows local
+  development**, intermittently self-reporting a "read-only sandbox, command
+  execution blocked" refusal even when correctly configured. Codex CLI's
+  `workspace-write` enforcement relies on Landlock, a Linux-only kernel
+  feature — on Windows there's nothing to actually enforce, so it appears to
+  fail closed rather than open. `.env` here uses
+  `CODEX_SANDBOX_MODE=danger-full-access` for local Windows development,
+  matching this platform's own documented fallback for kernels without
+  Landlock support (see `.env.example`'s comment above that variable). Not
+  an issue on macOS/Linux or the documented ECS/container path.
 - **`container-codex-runner.test.ts`'s one failing test is pre-existing,
   unrelated, and Windows-only.** It asserts on literal `/tmp/...` strings
   against a value that's gone through `path.resolve`, which produces
