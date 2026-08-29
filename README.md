@@ -1,4 +1,4 @@
-# GoalThread — Cross-Run Goal Memory for Agent Launchpad
+# GoalThread: Cross-Run Goal Memory for Agent Launchpad
 
 **Track 1 submission — team-designed middleware, "state and memory governance" direction.**
 
