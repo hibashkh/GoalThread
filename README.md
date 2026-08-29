@@ -216,12 +216,22 @@ can't already explain on its own.
    thread").
 2. **Create a second Agent "Trip Planner"** — don't send it anything yet.
 3. Seed the shared fixture into *both* Agents' workspaces now that both
-   exist (models the same saved-video source being reused across Agents):
+   exist (models the same saved-video source being reused across Agents).
+   First look up their real ids — `AGENT_ID_HERE` below is a placeholder to
+   replace, not literal text to type:
    ```bash
-   node scripts/seed-goalthread-fixture.mjs <tokyoExplorerAgentId>
-   node scripts/seed-goalthread-fixture.mjs <tripPlannerAgentId>
+   curl http://localhost:3000/api/agents
    ```
-   (Agent ids are in the Agent list, or `GET /api/agents`.)
+   ```powershell
+   Invoke-RestMethod http://localhost:3000/api/agents | Select-Object -ExpandProperty agents | Select-Object id, name
+   ```
+   Then, substituting each Agent's real id (a UUID, e.g.
+   `62b0a542-db6a-421c-9173-47f30e96e935`) for `AGENT_ID_HERE`:
+   ```bash
+   node scripts/seed-goalthread-fixture.mjs AGENT_ID_HERE
+   ```
+   Run it once per Agent — once with Tokyo Explorer's id, once with Trip
+   Planner's.
 4. On Trip Planner, send: `Which of those Tokyo spots are near Shibuya?`
    → **MERGE** into Tokyo — workspace overlap + explicit reference, two
    agreeing signals, no model call.
