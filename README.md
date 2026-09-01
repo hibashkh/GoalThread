@@ -179,6 +179,9 @@ Verified two ways:
    own — with zero Tokyo Runs present, after the real fork had happened
    through the browser.
 
+One-Page-Architecture with middleware, data flow, trust boundary, and enforcement, instrumentation, or recovery point:
+<img width="1950" height="1316" alt="GoalThread-One-Page-Architecture" src="https://github.com/user-attachments/assets/8a9071dc-4c6a-4ada-bec6-ed6f2f12fe06" />
+
 ## Setup
 
 Requirements: Node.js 22+, npm 10+, a BytePlus ModelArk API key and
