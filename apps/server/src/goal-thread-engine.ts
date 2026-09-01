@@ -7,6 +7,7 @@ import {
   contradictingEntities,
   deriveFallbackTitle,
   extractEntities,
+  extractEntitiesLenient,
   hasExplicitReference,
   hasGoalShiftSignal,
   sharedEntities,
@@ -290,7 +291,14 @@ export class GoalThreadEngine {
     });
     const best = signals[0] && signals[0].score > 0 ? signals[0] : undefined;
 
-    const contradicting = best ? contradictingEntities(entities, best.thread.keyEntities) : [];
+    // Lenient (case-insensitive) extraction specifically here: this is only
+    // ever consulted once the goal-shift phrase has already matched — a
+    // strong, deliberate signal — so it's safe to catch a new goal typed in
+    // lowercase even when other words in the same message (e.g. the old
+    // goal's name) happen to be capitalized. See extractEntitiesLenient.
+    const contradicting = best
+      ? contradictingEntities(extractEntitiesLenient(text), best.thread.keyEntities)
+      : [];
     if (goalShift && best && contradicting.length > 0) {
       return this.fork(input, best.thread, contradicting, {
         sharedEntities: best.shared,
@@ -466,7 +474,10 @@ export class GoalThreadEngine {
     const target = matchedCandidate?.thread;
 
     if (target && result.goal_shift) {
-      const newGoalEntities = contradictingEntities(entities, target.keyEntities);
+      // Lenient extraction here too — see the comment on the Tier 1 fork
+      // path above for why (mixed-capitalization goal-shift messages).
+      const lenientEntities = extractEntitiesLenient(input.run.prompt);
+      const newGoalEntities = contradictingEntities(lenientEntities, target.keyEntities);
       return this.fork(input, target, newGoalEntities.length > 0 ? newGoalEntities : entities, {
         sharedEntities: sharedEntities(entities, target.keyEntities),
         workspaceOverlap: false,

@@ -204,6 +204,32 @@ describe("GoalThreadEngine — Tier 1 (deterministic) path", () => {
     expect(tokyoThread?.status).toBe("CLOSED");
     expect(seoulThread?.status).toBe("ACTIVE");
   });
+
+  it("forks on a goal shift with mixed capitalization (old goal capitalized, new goal lowercase)", async () => {
+    // Second real regression: "Tokyo" stayed capitalized (it's the word
+    // already established in the thread) but "seoul" — the actually new
+    // part — was typed lowercase and missing "to" before it. The first
+    // lowercase-only fix didn't cover this since the message still has a
+    // capitalized word ("Tokyo"), which used to force the strict
+    // capitalized-only extraction path and miss "seoul" entirely.
+    const { store, root } = await makeStore();
+    const engine = new GoalThreadEngine(makeConfig(), store);
+    const agent = await makeAgent(root);
+    const runA = makeRun(agent, "Extract restaurants from my saved Tokyo travel videos.");
+    await seedDatabase(store, [agent], [runA]);
+    const first = await engine.processRun({ run: runA, agent });
+    const tokyoThreadId = first.targetThreadId;
+
+    const runB = makeRun(agent, "Actually forget Tokyo im going seoul instead");
+    await store.mutate((database) => database.runs.push(runB));
+    const decision = await engine.processRun({ run: runB, agent });
+
+    expect(decision.decision).toBe("FORK");
+    const tokyoThread = engine.getThread(tokyoThreadId);
+    const seoulThread = engine.getThread(decision.targetThreadId);
+    expect(tokyoThread?.status).toBe("CLOSED");
+    expect(seoulThread?.status).toBe("ACTIVE");
+  });
 });
 
 describe("GoalThreadEngine — Tier 2 (model-assisted) path", () => {

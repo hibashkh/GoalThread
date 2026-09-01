@@ -48,6 +48,26 @@ const ENTITY_STOPWORDS = new Set([
  * is nothing capitalized to find in the first place.
  */
 export function extractEntities(text: string): string[] {
+  return extractEntitiesInternal(text, { lenientOnly: false });
+}
+
+/**
+ * Always case-insensitive content-word extraction, regardless of whether
+ * other words in the message happen to be capitalized. Used specifically
+ * for the goal-shift/fork contradiction check (see GoalThreadEngine), which
+ * needs to find the new goal's entity even in a mixed-capitalization
+ * message like "Actually forget Tokyo im going seoul instead" — "Tokyo" is
+ * capitalized so extractEntities' fallback never activates there, but
+ * "seoul" (the actually new goal) is typed lowercase and would otherwise
+ * never be found. Safe to be more liberal here specifically because this
+ * is only ever consulted after the goal-shift phrase itself has already
+ * matched — a much stronger, more deliberate signal than casual mentions.
+ */
+export function extractEntitiesLenient(text: string): string[] {
+  return extractEntitiesInternal(text, { lenientOnly: true });
+}
+
+function extractEntitiesInternal(text: string, options: { lenientOnly: boolean }): string[] {
   const found = new Set<string>();
 
   for (const match of text.matchAll(/["“]([^"”]{2,40})["”]/g)) {
@@ -61,10 +81,12 @@ export function extractEntities(text: string): string[] {
   // noun ("Build a todo app" has no entities but is still "capitalized"),
   // so it has to count here for the fallback below to only activate on
   // genuinely all-lowercase typing, not every normal sentence.
-  const hasCapitalizedWord = words.some((raw) => {
-    const word = raw.replace(/[^A-Za-z'-]/g, "");
-    return word.length >= 3 && /^[A-Z]/.test(word);
-  });
+  const hasCapitalizedWord =
+    !options.lenientOnly &&
+    words.some((raw) => {
+      const word = raw.replace(/[^A-Za-z'-]/g, "");
+      return word.length >= 3 && /^[A-Z]/.test(word);
+    });
 
   words.forEach((raw, index) => {
     const word = raw.replace(/[^A-Za-z'-]/g, "");
