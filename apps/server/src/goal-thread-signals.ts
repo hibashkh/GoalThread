@@ -32,42 +32,25 @@ const ENTITY_STOPWORDS = new Set([
 
 /**
  * Extracts candidate "key entities" (places, projects, named subjects) from
- * task text: quoted phrases plus capitalized words that survive the
- * sentence-initial and stopword filters. Intentionally simple — a real NER
- * model is out of scope for a Tier 1 signal that must be cheap and always
- * computed.
+ * task text: quoted phrases plus non-stopword, non-sentence-initial content
+ * words. Intentionally simple — a real NER model is out of scope for a
+ * Tier 1 signal that must be cheap and always computed.
  *
- * Fallback for casual, fully-lowercase typing (e.g. "actually forget tokyo,
- * im going to seoul instead") — very common in real chat, and without this
- * the goal-shift/fork logic goes blind: it needs a "new entity not already
- * in the thread" to fork on, and capitalization-only extraction finds
- * nothing in an all-lowercase message. If the message has zero capitalized
- * words anywhere (not just at index 0), fall back to case-insensitive
- * content-word extraction instead of the strict capitalized-only rule.
- * Properly-capitalized text is unaffected — this only activates when there
- * is nothing capitalized to find in the first place.
+ * Deliberately case-insensitive, not "capitalized words only." Three real,
+ * live-reported bugs came from trying to be clever about capitalization
+ * instead: (1) an all-lowercase message ("actually forget tokyo...") found
+ * no entities at all; (2) a mixed-case message where the OLD goal stayed
+ * capitalized but the NEW goal was typed lowercase ("forget Tokyo im going
+ * seoul instead") still found nothing new to fork onto; (3) an entirely
+ * ordinary sentence with a normal capital first letter but an uncapitalized
+ * proper noun ("Extract restaurants from my saved tokyo travel videos")
+ * tripped a "does this message look properly capitalized" heuristic and
+ * filtered "tokyo" out anyway. Real chat capitalization is too inconsistent
+ * for a capitalization-based gate to ever fully cover — so this doesn't
+ * gate on capitalization at all. (Kept case-INsensitivity from stripping
+ * genuinely noisy short/common words via the stopword list instead.)
  */
 export function extractEntities(text: string): string[] {
-  return extractEntitiesInternal(text, { lenientOnly: false });
-}
-
-/**
- * Always case-insensitive content-word extraction, regardless of whether
- * other words in the message happen to be capitalized. Used specifically
- * for the goal-shift/fork contradiction check (see GoalThreadEngine), which
- * needs to find the new goal's entity even in a mixed-capitalization
- * message like "Actually forget Tokyo im going seoul instead" — "Tokyo" is
- * capitalized so extractEntities' fallback never activates there, but
- * "seoul" (the actually new goal) is typed lowercase and would otherwise
- * never be found. Safe to be more liberal here specifically because this
- * is only ever consulted after the goal-shift phrase itself has already
- * matched — a much stronger, more deliberate signal than casual mentions.
- */
-export function extractEntitiesLenient(text: string): string[] {
-  return extractEntitiesInternal(text, { lenientOnly: true });
-}
-
-function extractEntitiesInternal(text: string, options: { lenientOnly: boolean }): string[] {
   const found = new Set<string>();
 
   for (const match of text.matchAll(/["“]([^"”]{2,40})["”]/g)) {
@@ -76,30 +59,25 @@ function extractEntitiesInternal(text: string, options: { lenientOnly: boolean }
   }
 
   const words = text.split(/\s+/);
-  // Checked across the WHOLE message, including the sentence-initial word —
-  // ordinary English capitalizes that regardless of whether it's a proper
-  // noun ("Build a todo app" has no entities but is still "capitalized"),
-  // so it has to count here for the fallback below to only activate on
-  // genuinely all-lowercase typing, not every normal sentence.
-  const hasCapitalizedWord =
-    !options.lenientOnly &&
-    words.some((raw) => {
-      const word = raw.replace(/[^A-Za-z'-]/g, "");
-      return word.length >= 3 && /^[A-Z]/.test(word);
-    });
-
   words.forEach((raw, index) => {
     const word = raw.replace(/[^A-Za-z'-]/g, "");
     if (word.length < 3) return;
-    if (index === 0) return; // sentence-initial capital is not a reliable signal
+    if (index === 0) return; // sentence-initial word is not a reliable signal
     if (ENTITY_STOPWORDS.has(word.toLowerCase())) return;
-    if (hasCapitalizedWord) {
-      if (!/^[A-Z][a-zA-Z'-]*$/.test(word)) return;
-    }
     found.add(word);
   });
 
   return [...found];
+}
+
+/**
+ * @deprecated Alias for {@link extractEntities} — case-insensitivity is now
+ * the default behavior, so there's no longer a separate lenient mode. Kept
+ * so existing call sites (the goal-shift/fork contradiction check) don't
+ * need to change; safe to just call extractEntities directly in new code.
+ */
+export function extractEntitiesLenient(text: string): string[] {
+  return extractEntities(text);
 }
 
 /**

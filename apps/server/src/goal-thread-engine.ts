@@ -161,7 +161,16 @@ function isSameAgentContinuation(
 
 function titleFromEntities(entities: string[], prompt: string): string {
   if (entities.length > 0) {
-    return entities.slice(0, 2).join(" & ");
+    // extractEntities is now case-insensitive (see its own comment for why),
+    // so a casually-typed message can surface several generic content words
+    // alongside the real entity. Prefer whichever entities are actually
+    // capitalized (their original casing is preserved) for the title, so a
+    // properly-typed "Tokyo" still produces a clean "Tokyo" title instead of
+    // "restaurants & saved" — functional correctness (keyEntities, matching)
+    // doesn't depend on this, it's purely a cosmetic preference.
+    const capitalized = entities.filter((entity) => /^[A-Z]/.test(entity));
+    const preferred = capitalized.length > 0 ? capitalized : entities;
+    return preferred.slice(0, 2).join(" & ");
   }
   return deriveFallbackTitle(prompt);
 }

@@ -32,18 +32,34 @@ describe("deriveFallbackTitle", () => {
 });
 
 describe("extractEntities", () => {
-  it("extracts non-sentence-initial capitalized words", () => {
-    expect(extractEntities("Extract restaurants from my saved Tokyo travel videos.")).toEqual([
+  it("extracts the real entity from a properly-capitalized message", () => {
+    expect(extractEntities("Extract restaurants from my saved Tokyo travel videos.")).toContain(
       "Tokyo",
-    ]);
+    );
   });
 
   it("extracts quoted phrases regardless of case", () => {
     expect(extractEntities('Add "morning pages" to my routine.')).toContain("morning pages");
   });
 
-  it("ignores the sentence-initial word even when capitalized", () => {
-    expect(extractEntities("Build a todo app.")).toEqual([]);
+  it("ignores the sentence-initial word regardless of case", () => {
+    // "Build"/"extract" themselves never count (they're also stopwords), but
+    // the real point: index 0 is excluded purely by position, independent
+    // of capitalization.
+    expect(extractEntities("Build a todo app.")).not.toContain("build");
+  });
+
+  it("is case-insensitive — finds a real entity even typed lowercase", () => {
+    // Regression: three real bugs came from trying to gate extraction on
+    // whether the message "looked" properly capitalized. A perfectly
+    // ordinary sentence (capital first letter, as everyone types) with an
+    // uncapitalized proper noun used to find nothing at all.
+    expect(extractEntities("Extract restaurants from my saved tokyo travel videos.")).toContain(
+      "tokyo",
+    );
+    expect(extractEntities("actually forget tokyo, im going to seoul instead")).toEqual(
+      expect.arrayContaining(["tokyo", "seoul"]),
+    );
   });
 });
 
