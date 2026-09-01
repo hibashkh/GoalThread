@@ -14,3 +14,9 @@ coverage/
 deploy/volcengine/.terraform/
 deploy/volcengine/*.tfstate*
 deploy/volcengine/terraform.tfvars
+
+# Demo recordings / large media — belong with the submission, not in git history.
+*.mp4
+*.mov
+*.avi
+*.mkv
