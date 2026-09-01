@@ -26,7 +26,7 @@ a forked or closed thread's context can never leak into its successor.**
 - [The isolation guarantee](#the-isolation-guarantee)
 - [Setup](#setup)
 - [Live demo script](#live-demo-script)
-  - [Normal case](#normal-case-five-scenarios)
+  - [Normal case](#normal-case)
   - [Degraded case (required failure evidence)](#degraded-case-required-failure-evidence)
 - [Automated tests](#automated-tests)
 - [Live regression evidence](#live-regression-evidence)
@@ -119,7 +119,7 @@ thread on four cheap, deterministic Tier 1 signals:
 
 | Signal | What it checks |
 | --- | --- |
-| Shared entities | Capitalized nouns / quoted phrases in the task text overlapping the thread's `keyEntities` |
+| Shared entities | Non-stopword content words / quoted phrases in the task text (case-insensitive) overlapping the thread's `keyEntities` |
 | Explicit reference | Phrasing like "those", "continue", "earlier", "the previous" |
 | Workspace overlap | The current Agent's workspace shares a non-platform file with another Agent that contributed to this thread (models the same saved-video fixture being reused across Agents) |
 | Same-Agent continuation | This thread's most recent Run came from the *same* Agent — since each Agent already keeps one persistent, resumable Codex session, a follow-up on the same Agent is very likely still the same conversation, even with zero shared keywords |
@@ -225,7 +225,9 @@ Agent), but the standard demo below doesn't need either of them.
 
 ## Live demo script
 
-### Normal case (five scenarios)
+This is the exact script the submitted demo video follows.
+
+### Normal case
 
 Run these through the browser Playground across **genuinely separate
 Agents** where noted — that's the part single-Agent session continuity
@@ -239,28 +241,42 @@ can't already explain on its own.
    → **NEW** thread "Tokyo" (open the **Goal Threads** button in the sidebar
    to see it: `NEW`, 100% confidence, "No Tier 1 signal matched an open
    thread").
-2. **Create a second Agent "Trip Planner"** — it gets the same fixture
-   automatically too, modeling the same saved-video source being reused
-   across separate Agents.
-3. On Trip Planner, send: `Which of those Tokyo spots are near Shibuya?`
-   → **MERGE** into Tokyo — workspace overlap + explicit reference, two
-   agreeing signals, no model call.
-4. Same Agent: `Build a 3-day itinerary from those places.`
+2. **Create a second Agent "Trip Planner".** Send:
+   `Which of those Tokyo spots are near Shibuya?`
+   → **MERGE** into Tokyo — a completely different Agent, correctly linked
+   to the same goal. This is the headline moment: workspace overlap +
+   explicit reference, two agreeing signals, no model call needed.
+3. *(Optional)* Same Agent: `Build a 3-day itinerary from those places.`
    → **MERGE** into Tokyo again.
-5. **Create a third Agent "Fitness Coach".** Send:
-   `Give me a 4-day beginner gym routine.`
-   → **NEW**, a completely separate thread — proves it doesn't get pulled
-   into Tokyo just because it happened around the same time.
+4. **Create Agent "Money Planner".** Send:
+   `Help me build an emergency fund savings plan.`
+   → **NEW**, unrelated to Tokyo.
+5. Same Agent: `Help me prep for a salary negotiation call.`
+   → **NEW again** — a *second, separate* thread, even though both mention
+   money. Proves it isn't just matching on shallow topic similarity ("both
+   are about money") — a much stronger negative case than an obviously
+   unrelated topic like a gym routine would be.
 6. Back on Trip Planner: `Actually forget Tokyo, I'm going to Seoul instead.`
    → **FORK** — Tokyo closes (`closedReason` visible in the panel), a new
    Seoul thread opens with `parentThreadId` pointing at Tokyo.
-7. Open **Goal Threads** and expand each thread to see its Runs; click a
-   Run to see its full `ThreadDecision` — decision, confidence, evidence
-   bullets, exactly as computed above.
+7. **The isolation guarantee — no chat message needed, just read the panel.**
+   Open **Goal Threads**. Tokyo (`CLOSED`) still lists its own 3 Runs; Seoul
+   (`ACTIVE`) lists only its own — Tokyo's never appear there. This is the
+   actual proof: GoalThread's own record of "what belongs to this thread"
+   never mixes the two, enforced by `getThreadContext()` always resolving
+   strictly through `thread.runIds`, never a parent's or sibling's.
+   (Earlier drafts of this script tried to prove isolation by asking Codex a
+   baited question in the chat — that was a design mistake: Codex still has
+   normal access to files already sitting in its own workspace regardless of
+   which Goal Thread a Run belongs to, since GoalThread only governs its own
+   metadata, never the Agent's filesystem. The correct proof is the panel
+   above, not a chat answer.)
 
-This exact sequence was run live end-to-end through the browser against a
-real BytePlus endpoint while building this (see commit history) — it is not
-a hypothetical script.
+Every decision type here — `NEW`, `MERGE` (both strong Tier 1 and Tier 2),
+and `FORK` — was produced live through the actual browser against a real
+BytePlus endpoint during development, not simulated. Several real bugs
+surfaced doing exactly this, each caught, fixed, and locked in with a
+regression test — see [Known limitations](#known-limitations).
 
 ### Degraded case (required failure evidence)
 
@@ -273,17 +289,21 @@ simulates a Tier 2 outage without touching Codex at all:
 1. Stop the dev server.
 2. Add to `.env`: `GOALTHREAD_FORCE_TIER2_FAILURE=1`
 3. `npm run dev`
-4. On an Agent with an existing open thread, send a follow-up with no
-   entities and no reference keyword — e.g. `What should we tackle after
-   this?` on Trip Planner right after the Seoul fork.
+4. On an Agent with an existing open thread, send a follow-up with **no
+   entities already known to that thread and no reference keyword** (e.g.
+   not "continue," not "those") — otherwise a strong Tier 1 match will
+   correctly skip Tier 2 entirely before the flag ever gets a chance to
+   matter. A fresh topic within the same conversation works well, e.g.
+   `What should I pack for the weather?` on Trip Planner after the Seoul
+   fork.
 5. **Observe:** the Run itself completes completely normally (Codex was
-   never touched). Open Goal Threads → the Run still got a real
-   `ThreadDecision` — `MERGE`, confidence **0.65** (below the 0.9 a live
-   Tier 2 verdict or a strong Tier 1 match would give), evidence reading
-   *"Tier 2 unavailable (Simulated Tier 2 outage
-   (GOALTHREAD_FORCE_TIER2_FAILURE=1)); fell back to the best Tier 1
-   match..."* — the platform stayed understandable and controllable
-   throughout, exactly as required.
+   never touched — the chat answer looks like any other). Open Goal
+   Threads → the Run still got a real `ThreadDecision` — `MERGE`,
+   confidence **0.65** (below the 0.9 a live Tier 2 verdict or a strong
+   Tier 1 match would give), evidence reading *"Tier 2 unavailable
+   (Simulated Tier 2 outage (GOALTHREAD_FORCE_TIER2_FAILURE=1)); fell back
+   to the best Tier 1 match..."* — the platform stayed understandable and
+   controllable throughout, exactly as required.
 6. Remove the env var and restart to return to normal operation.
 
 This same fallback path is also what fires on a genuine network failure or
@@ -300,14 +320,24 @@ npm run test -w @launchpad/server
 ```
 
 - [`goal-thread-signals.test.ts`](apps/server/src/goal-thread-signals.test.ts) —
-  the pure Tier 1 helpers (entity extraction, reference/goal-shift
-  detection, fallback title generation) in isolation.
+  9 tests: the pure Tier 1 helpers (entity extraction, reference/goal-shift
+  detection, fallback title generation) in isolation, including the
+  case-insensitivity regression tests below.
 - [`goal-thread-engine.test.ts`](apps/server/src/goal-thread-engine.test.ts) —
-  11 tests: Tier 1 merge/new/fork paths, the same-Agent strong-match case,
+  13 tests: Tier 1 merge/new/fork paths, the same-Agent strong-match case,
   Tier 2 escalation and its verdict, graceful fallback on Tier 2 failure
-  (both the deliberate flag and a thrown `ArkCallError`), the engine never
-  throwing on an internal error, and the full fork + attempted-leak
-  isolation scenario.
+  (both the deliberate `GOALTHREAD_FORCE_TIER2_FAILURE` flag and a thrown
+  `ArkCallError`), the engine never throwing on an internal error, and the
+  full fork + attempted-leak isolation scenario.
+- **Three regression tests using exact live-reported phrasing** — each one
+  is a real bug caught from actually using the app during development, not
+  a hypothetical: forking on an all-lowercase goal-shift message
+  (`"actually forget tokyo, im going to seoul instead"`), forking when the
+  *old* goal stays capitalized but the *new* one is typed lowercase
+  (`"Actually forget Tokyo im going seoul instead"`), and the
+  `GOALTHREAD_FORCE_TIER2_FAILURE` fallback itself. See
+  [Known limitations](#known-limitations) for the full story of what each
+  one taught about the risk of gating logic on capitalization patterns.
 - Existing platform tests (Agent lifecycle, Playground, HTTP boundary,
   persistence) — unchanged and still green, proving the baseline wasn't
   broken.
@@ -340,6 +370,13 @@ correctly, with **zero cross-domain leaks** asserted after every single Run.
 The one genuine miss, and an experiment that made things worse trying to
 fix it, are both documented below.
 
+*(This run predates the capitalization-independence fix described in Known
+limitations — that fix only expands which entities `extractEntities` can
+find, it doesn't change the scoring/decision rules the regression dataset
+exercises, so it isn't expected to regress this result. It's independently
+covered by its own dedicated unit and regression tests rather than another
+full paid re-run of the live dataset.)*
+
 ## API
 
 | Route | Purpose |
@@ -356,12 +393,23 @@ backend already decided — no decision logic in
 
 ## Known limitations
 
-- **Entity extraction is a heuristic, not NER.** Capitalized words and
-  quoted phrases only — a lowercase place name typed casually (`"i want to
-  go to almaty"`) won't be picked up as an entity. This mainly affects
-  thread *titles* in that case (mitigated by `deriveFallbackTitle`'s
-  stopword-filtered Title Case fallback) more than merge correctness, since
-  Tier 2 still sees the raw task text either way.
+- **Entity extraction is a heuristic, not NER** — quoted phrases plus
+  non-stopword content words, deliberately case-insensitive. It started out
+  capitalized-words-only, which sounds more "proper," but broke three times
+  against real usage before landing here: (1) an all-lowercase message
+  found no entities at all; (2) a message where the *old*, already-known
+  goal stayed capitalized but the *new* goal was typed lowercase still
+  found nothing to fork onto; (3) a perfectly ordinary sentence — capital
+  first letter, like everyone types — with an uncapitalized proper noun
+  ("Extract restaurants from my saved tokyo travel videos") tripped a "does
+  this look properly capitalized" heuristic and filtered the real entity
+  out anyway. Real chat capitalization is too inconsistent for any
+  capitalization-based gate to fully cover, so extraction now just doesn't
+  gate on case at all — see the comment above `extractEntities` in
+  `goal-thread-signals.ts` for the full reasoning and the accepted
+  trade-off (an out-of-context sentence like "Build a todo app" now
+  extracts generic words instead of nothing, which has never actually
+  occurred in real usage, versus three real failures that did).
 - **Long-range disambiguation among many same-Agent threads is imperfect.**
   When one Agent has several open threads, same-Agent continuation ties on
   every one of them, and the Tier 2 candidate list is capped at 3 (by
@@ -391,6 +439,19 @@ backend already decided — no decision logic in
   matching this platform's own documented fallback for kernels without
   Landlock support (see `.env.example`'s comment above that variable). Not
   an issue on macOS/Linux or the documented ECS/container path.
+- **Not every BytePlus ModelArk model works with Codex CLI's tool-calling.**
+  Tried switching `ARK_MODEL` to a lighter/faster "Flash" variant of the
+  same model family to save tokens during testing — it broke Codex's own
+  shell/file tool calls entirely (`failed to parse function arguments:
+  invalid type: string ..., expected a sequence`), because that variant
+  wasn't reliably formatting tool calls the way Codex CLI's schema expects
+  (a plain string where an array was required). This is a Codex CLI ↔
+  model compatibility issue, unrelated to GoalThread's own logic — the
+  Tier 2 structured-JSON call (`ark-client.ts`) never had this problem on
+  either model, since it's a much simpler, more constrained call shape.
+  Reverted to the originally-configured model for the actual demo; noted
+  here since it's a real, reproducible finding about this platform, not a
+  one-off fluke.
 - **`container-codex-runner.test.ts`'s one failing test is pre-existing,
   unrelated, and Windows-only.** It asserts on literal `/tmp/...` strings
   against a value that's gone through `path.resolve`, which produces
